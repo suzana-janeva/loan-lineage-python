@@ -13,23 +13,32 @@ def generate_explanation(data: dict, version_name: str = 'rf-v1') -> dict:
     explainer   = shap.TreeExplainer(clf)
     shap_values = explainer.shap_values(X)
 
-    values = shap_values[1][0] if isinstance(shap_values, list) else shap_values[0]
+    # Handle different SHAP versions (list vs ndarray)
+    if isinstance(shap_values, list):
+        values = np.array(shap_values[1][0]).flatten()
+    else:
+        sv = np.array(shap_values)
+        if sv.ndim == 3:
+            values = sv[0, :, 1]
+        else:
+            values = sv[0]
+
+    # Handle expected_value (scalar vs array)
+    expected = explainer.expected_value
+    ev_arr   = np.array(expected).flatten()
+    base_value = float(ev_arr[1] if len(ev_arr) > 1 else ev_arr[0])
 
     importance_scores = [
         {
             'feature_name':     feature,
-            'importance_score': round(float(score), 6),
+            'importance_score': round(float(v), 6),
         }
-        for feature, score in zip(FEATURE_LABELS, values)
+        for feature, v in zip(FEATURE_LABELS, values)
     ]
     importance_scores.sort(key=lambda x: abs(x['importance_score']), reverse=True)
 
     return {
         'version_name': version_name,
         'features':     importance_scores,
-        'base_value':   round(float(
-            explainer.expected_value[1]
-            if isinstance(explainer.expected_value, np.ndarray)
-            else explainer.expected_value
-        ), 6),
+        'base_value':   round(base_value, 6),
     }
